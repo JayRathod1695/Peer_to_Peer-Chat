@@ -7,8 +7,9 @@ public func configure(_ app: Application) async throws {
     app.databases.use(.sqlite(.file("db.sqlite")), as: .sqlite)
     
     // Configure migrations
-    // Add your migrations here when you create models
-    // app.migrations.add(CreateUser())
+    app.migrations.add(CreateUser())
+    app.migrations.add(CreateMessage())
+    app.migrations.add(CreateConnectionLog())
     
     // Register routes
     try routes(app)

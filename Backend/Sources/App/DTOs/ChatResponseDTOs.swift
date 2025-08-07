@@ -3,20 +3,20 @@ import Foundation
 
 // MARK: - Response DTOs for Chat Endpoints
 
-struct ScanResponse: Content {
+struct ScanResponseDTO: Content {
     let status: String
     let devices: [String]
     let timestamp: String
 }
 
-struct ConnectResponse: Content {
+struct ConnectResponseDTO: Content {
     let status: String
     let deviceId: String
     let message: String
     let timestamp: String
 }
 
-struct SendMessageResponse: Content {
+struct SendMessageResponseDTO: Content {
     let status: String
     let deviceId: String
     let message: String
@@ -24,7 +24,7 @@ struct SendMessageResponse: Content {
     let timestamp: String
 }
 
-struct UsageResponse: Content {
+struct UsageResponseDTO: Content {
     let status: String
     let totalMessages: Int
     let totalConnections: Int
@@ -32,7 +32,7 @@ struct UsageResponse: Content {
     let timestamp: String
 }
 
-struct MessageResponse: Content {
+struct MessageResponseDTO: Content {
     let id: String
     let senderId: String
     let content: String
@@ -40,15 +40,15 @@ struct MessageResponse: Content {
     let isOutgoing: Bool
 }
 
-struct MessagesResponse: Content {
+struct MessagesResponseDTO: Content {
     let status: String
     let deviceId: String
-    let messages: [MessageResponse]
+    let messages: [MessageResponseDTO]
     let totalCount: Int
     let timestamp: String
 }
 
-struct ConversationPreview: Content {
+struct ConversationPreviewDTO: Content {
     let deviceId: String
     let deviceName: String
     let lastMessage: String
@@ -57,16 +57,16 @@ struct ConversationPreview: Content {
     let isConnected: Bool
 }
 
-struct ConversationsResponse: Content {
+struct ConversationsResponseDTO: Content {
     let status: String
-    let conversations: [ConversationPreview]
+    let conversations: [ConversationPreviewDTO]
     let totalCount: Int
     let timestamp: String
 }
 
 // MARK: - Request DTOs
 
-struct SendMessageRequest: Content {
+struct SendMessageRequestDTO: Content {
     let message: String
 }
 

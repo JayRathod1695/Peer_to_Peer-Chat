@@ -2,12 +2,12 @@ import Fluent
 import Vapor
 
 class DatabaseService {
-    private let db: Database
-    private let pythonBridge: PythonBridge
+    let db: Database
+    let pythonBridge: PythonBridge
     
-    init(db: Database, pythonBridge: PythonBridge) {
+    init(db: Database) {
         self.db = db
-        self.pythonBridge = pythonBridge
+        self.pythonBridge = PythonBridge()
     }
     
     // MARK: - User Operations
@@ -17,66 +17,64 @@ class DatabaseService {
         return user
     }
     
-    func findUser(by email: String) async throws -> User? {
+    func getUserByEmail(_ email: String) async throws -> User? {
         return try await User.query(on: db)
             .filter(\.$email == email)
             .first()
     }
     
-    func findUser(by id: UUID) async throws -> User? {
-        return try await User.find(id, on: db)
+    func getUserByDeviceId(_ deviceId: String) async throws -> User? {
+        return try await User.query(on: db)
+            .filter(\.$deviceId == deviceId)
+            .first()
     }
     
-    // MARK: - Message Operations with Python Integration
-    func saveMessage(_ message: Message) async throws -> Message {
-        // Save to local database
+    // MARK: - Message Operations
+    func saveMessage(content: String, senderDeviceId: String, receiverDeviceId: String) async throws -> Message {
+        let message = Message(
+            content: content,
+            senderDeviceId: senderDeviceId,
+            receiverDeviceId: receiverDeviceId
+        )
         try await message.save(on: db)
         
         // Also save to Supabase via Python
         do {
-            let _ = try await pythonBridge.saveMessage(
+            let _ = try await pythonBridge.saveMessageToSupabase(
                 deviceId: message.senderDeviceId,
                 senderId: message.senderDeviceId,
                 receiverId: message.receiverDeviceId,
-                text: message.content
+                content: message.content,
+                timestamp: message.createdAt
             )
         } catch {
-            // Log error but don't fail the operation
             print("Failed to save message to Supabase: \(error)")
         }
         
         return message
     }
     
-    func getMessages(for deviceId: String, limit: Int = 50) async throws -> [Message] {
+    func getMessages(for deviceId: String, limit: Int = 20) async throws -> [Message] {
         return try await Message.query(on: db)
             .group(.or) { group in
-                group.filter(\.$senderDeviceId == deviceId)
                 group.filter(\.$receiverDeviceId == deviceId)
+                group.filter(\.$senderDeviceId == deviceId)
             }
             .sort(\.$createdAt, .descending)
             .limit(limit)
             .all()
     }
     
-    func getMessagesBetween(device1: String, device2: String, limit: Int = 50) async throws -> [Message] {
+    func getUnreadMessages(for deviceId: String, limit: Int = 20) async throws -> [Message] {
         return try await Message.query(on: db)
-            .group(.or) { group in
-                group.group(.and) { andGroup in
-                    andGroup.filter(\.$senderDeviceId == device1)
-                    andGroup.filter(\.$receiverDeviceId == device2)
-                }
-                group.group(.and) { andGroup in
-                    andGroup.filter(\.$senderDeviceId == device2)
-                    andGroup.filter(\.$receiverDeviceId == device1)
-                }
-            }
+            .filter(\.$receiverDeviceId == deviceId)
+            .filter(\.$deliveryStatus != "delivered")
             .sort(\.$createdAt, .descending)
             .limit(limit)
             .all()
     }
     
-    func updateMessageStatus(_ messageId: UUID, status: DeliveryStatus) async throws {
+    func updateMessageStatus(_ messageId: UUID, status: String) async throws {
         guard let message = try await Message.find(messageId, on: db) else {
             throw Abort(.notFound, reason: "Message not found")
         }
@@ -87,36 +85,32 @@ class DatabaseService {
     func getMessagePreviews(for deviceId: String) async throws -> [MessagePreview] {
         // Try to get from Supabase first
         do {
-            let response = try await pythonBridge.getUsage(deviceId: deviceId)
+            let response = try await pythonBridge.getUsageFromSupabase(deviceId: deviceId)
             if let previews = response["previews"] as? [[String: Any]] {
                 return previews.compactMap { previewDict in
                     guard let deviceId = previewDict["deviceId"] as? String,
-                          let preview = previewDict["preview"] as? String,
-                          let timestampStr = previewDict["timestamp"] as? String,
+                          let lastMessage = previewDict["lastMessage"] as? String,
+                          let timestamp = previewDict["timestamp"] as? Date,
                           let unreadCount = previewDict["unreadCount"] as? Int else {
                         return nil
                     }
-                    
-                    let formatter = ISO8601DateFormatter()
-                    let timestamp = formatter.date(from: timestampStr) ?? Date()
-                    
                     return MessagePreview(
                         deviceId: deviceId,
-                        preview: preview,
+                        lastMessage: lastMessage,
                         timestamp: timestamp,
                         unreadCount: unreadCount
                     )
                 }
             }
         } catch {
-            print("Failed to get message previews from Supabase: \(error)")
+            print("Failed to get previews from Supabase: \(error)")
         }
         
         // Fallback to local database
         let messages = try await Message.query(on: db)
             .group(.or) { group in
-                group.filter(\.$senderDeviceId == deviceId)
                 group.filter(\.$receiverDeviceId == deviceId)
+                group.filter(\.$senderDeviceId == deviceId)
             }
             .sort(\.$createdAt, .descending)
             .all()
@@ -127,63 +121,63 @@ class DatabaseService {
             let otherDeviceId = message.senderDeviceId == deviceId ? message.receiverDeviceId : message.senderDeviceId
             
             if previews[otherDeviceId] == nil {
-                let unreadCount = try await getUnreadMessageCount(for: deviceId, from: otherDeviceId)
                 previews[otherDeviceId] = MessagePreview(
                     deviceId: otherDeviceId,
-                    preview: String(message.content.prefix(50)),
-                    timestamp: message.createdAt!,
+                    lastMessage: message.content,
+                    timestamp: message.createdAt,
+                    unreadCount: message.receiverDeviceId == deviceId && message.deliveryStatus != "delivered" ? 1 : 0
+                )
+            } else {
+                let currentPreview = previews[otherDeviceId]!
+                let unreadCount = currentPreview.unreadCount + (message.receiverDeviceId == deviceId && message.deliveryStatus != "delivered" ? 1 : 0)
+                previews[otherDeviceId] = MessagePreview(
+                    deviceId: otherDeviceId,
+                    lastMessage: message.content,
+                    timestamp: message.createdAt,
                     unreadCount: unreadCount
                 )
             }
         }
         
-        return Array(previews.values).sorted { $0.timestamp > $1.timestamp }
+        return Array(previews.values)
     }
     
-    private func getUnreadMessageCount(for receiverDeviceId: String, from senderDeviceId: String) async throws -> Int {
-        return try await Message.query(on: db)
-            .filter(\.$receiverDeviceId == receiverDeviceId)
-            .filter(\.$senderDeviceId == senderDeviceId)
-            .filter(\.$deliveryStatus != .delivered)
-            .count()
-    }
-    
-    // MARK: - Connection Log Operations with Python Integration
-    func logConnection(_ log: ConnectionLog) async throws -> ConnectionLog {
-        // Save to local database
+    // MARK: - Connection Log Operations
+    func saveConnectionLog(localDeviceId: String, remoteDeviceId: String, status: String) async throws -> ConnectionLog {
+        let log = ConnectionLog(
+            localDeviceId: localDeviceId,
+            remoteDeviceId: remoteDeviceId,
+            status: status
+        )
         try await log.save(on: db)
         
         // Also save to Supabase via Python
         do {
-            let _ = try await pythonBridge.saveConnectionLog(
+            let _ = try await pythonBridge.saveConnectionLogToSupabase(
                 localDeviceId: log.localDeviceId,
                 remoteDeviceId: log.remoteDeviceId,
-                status: log.status.rawValue,
-                errorMessage: log.errorMessage
+                status: log.status,
+                timestamp: log.createdAt
             )
         } catch {
-            // Log error but don't fail the operation
             print("Failed to save connection log to Supabase: \(error)")
         }
         
         return log
     }
     
-    func getConnectionLogs(for deviceId: String, limit: Int = 100) async throws -> [ConnectionLog] {
-        return try await ConnectionLog.query(on: db)
-            .group(.or) { group in
-                group.filter(\.$localDeviceId == deviceId)
-                group.filter(\.$remoteDeviceId == deviceId)
-            }
-            .sort(\.$createdAt, .descending)
-            .limit(limit)
-            .all()
+    func getPendingMessagesCount(senderDeviceId: String, receiverDeviceId: String) async throws -> Int {
+        return try await Message.query(on: db)
+            .filter(\.$receiverDeviceId == receiverDeviceId)
+            .filter(\.$senderDeviceId == senderDeviceId)
+            .filter(\.$deliveryStatus != "delivered")
+            .count()
     }
     
     func getConnectionStats(for deviceId: String) async throws -> ConnectionStats {
         // Try to get from Supabase first
         do {
-            let response = try await pythonBridge.getUsage(deviceId: deviceId)
+            let response = try await pythonBridge.getUsageFromSupabase(deviceId: deviceId)
             if let stats = response["stats"] as? [String: Any],
                let attempts = stats["attempts"] as? Int,
                let successes = stats["successes"] as? Int,
@@ -191,97 +185,76 @@ class DatabaseService {
                 return ConnectionStats(attempts: attempts, successes: successes, failures: failures)
             }
         } catch {
-            print("Failed to get connection stats from Supabase: \(error)")
+            print("Failed to get stats from Supabase: \(error)")
         }
         
         // Fallback to local database
-        let logs = try await getConnectionLogs(for: deviceId)
+        let totalAttempts = try await ConnectionLog.query(on: db)
+            .filter(\.$localDeviceId == deviceId)
+            .count()
         
-        let attempts = logs.filter { $0.status == .attempt }.count
-        let successes = logs.filter { $0.status == .success }.count
-        let failures = logs.filter { $0.status == .failure }.count
+        let successes = try await ConnectionLog.query(on: db)
+            .filter(\.$localDeviceId == deviceId)
+            .filter(\.$status == "success")
+            .count()
         
-        return ConnectionStats(attempts: attempts, successes: successes, failures: failures)
+        let failures = totalAttempts - successes
+        
+        return ConnectionStats(attempts: totalAttempts, successes: successes, failures: failures)
     }
     
     // MARK: - Dummy Data Methods
     func getDummyDevices() -> [String] {
-        return pythonBridge.getDummyDevices()
+        return pythonBridge.getDummyDevicesFromPython()
     }
     
     func getDummyStats() -> ConnectionStats {
-        let stats = pythonBridge.getDummyStats()
+        let stats = pythonBridge.getDummyStatsFromPython()
         return ConnectionStats(
-            attempts: stats["attempts"] as? Int ?? 5,
-            successes: stats["successes"] as? Int ?? 3,
-            failures: stats["failures"] as? Int ?? 2
+            attempts: stats["attempts"] ?? 5,
+            successes: stats["successes"] ?? 3,
+            failures: stats["failures"] ?? 2
         )
     }
     
     func getDummyMessagePreviews() -> [MessagePreview] {
-        let previews = pythonBridge.getDummyPreviews()
+        let previews = pythonBridge.getDummyPreviewsFromPython()
         return previews.compactMap { previewDict in
             guard let deviceId = previewDict["deviceId"] as? String,
-                  let preview = previewDict["preview"] as? String,
-                  let timestampStr = previewDict["timestamp"] as? String,
+                  let lastMessage = previewDict["lastMessage"] as? String,
+                  let timestamp = previewDict["timestamp"] as? Date,
                   let unreadCount = previewDict["unreadCount"] as? Int else {
                 return nil
             }
-            
-            let formatter = ISO8601DateFormatter()
-            let timestamp = formatter.date(from: timestampStr) ?? Date()
-            
             return MessagePreview(
                 deviceId: deviceId,
-                preview: preview,
+                lastMessage: lastMessage,
                 timestamp: timestamp,
                 unreadCount: unreadCount
             )
         }
     }
-}
-
-// MARK: - DTOs
-struct ConnectionStats: Content {
-    let attempts: Int
-    let successes: Int
-    let failures: Int
-}
-
-// MARK: - Dummy Data
-struct DummyData {
-    static let devices = ["Device 1", "Device 2", "Device 3", "iPhone 12", "MacBook Pro", "iPad Air"]
     
     static let stats = ConnectionStats(attempts: 15, successes: 12, failures: 3)
     
     static let previews: [MessagePreview] = [
         MessagePreview(
             deviceId: "Device 1",
-            preview: "Hey there! How are you doing?",
-            timestamp: Date().addingTimeInterval(-3600), // 1 hour ago
+            lastMessage: "Hello there!",
+            timestamp: Date().addingTimeInterval(-3600),
             unreadCount: 2
         ),
         MessagePreview(
             deviceId: "Device 2",
-            preview: "Thanks for the file you sent earlier",
-            timestamp: Date().addingTimeInterval(-7200), // 2 hours ago
+            lastMessage: "How are you?",
+            timestamp: Date().addingTimeInterval(-7200),
             unreadCount: 0
         ),
         MessagePreview(
-            deviceId: "iPhone 12",
-            preview: "Are we still meeting tomorrow?",
-            timestamp: Date().addingTimeInterval(-86400), // 1 day ago
-            unreadCount: 1
-        ),
-        MessagePreview(
-            deviceId: "MacBook Pro",
-            preview: "The project looks great! 👍",
-            timestamp: Date().addingTimeInterval(-172800), // 2 days ago
-            unreadCount: 0
+            deviceId: "Device 3",
+            lastMessage: "Meeting at 3 PM",
+            timestamp: Date().addingTimeInterval(-10800),
+            unreadCount: 5
         )
     ]
-    
-    static func getRandomDevice() -> String {
-        return devices.randomElement() ?? "Unknown Device"
-    }
 }
