@@ -1,0 +1,33 @@
+# Xcode noise
+build/
+DerivedData/
+*.xcworkspace
+*.xcuserdata
+
+# macOS noise
+.DS_Store
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+*.xcodeproj
+
+# Vapor noise
+Config/secrets/
+*.sqlite
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Node.js (if using any JS tooling)
+node_modules/
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.env
+.env.local
