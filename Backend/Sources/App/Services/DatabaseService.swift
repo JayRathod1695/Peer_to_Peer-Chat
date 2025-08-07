@@ -234,27 +234,4 @@ class DatabaseService {
             )
         }
     }
-    
-    static let stats = ConnectionStats(attempts: 15, successes: 12, failures: 3)
-    
-    static let previews: [MessagePreview] = [
-        MessagePreview(
-            deviceId: "Device 1",
-            lastMessage: "Hello there!",
-            timestamp: Date().addingTimeInterval(-3600),
-            unreadCount: 2
-        ),
-        MessagePreview(
-            deviceId: "Device 2",
-            lastMessage: "How are you?",
-            timestamp: Date().addingTimeInterval(-7200),
-            unreadCount: 0
-        ),
-        MessagePreview(
-            deviceId: "Device 3",
-            lastMessage: "Meeting at 3 PM",
-            timestamp: Date().addingTimeInterval(-10800),
-            unreadCount: 5
-        )
-    ]
 }

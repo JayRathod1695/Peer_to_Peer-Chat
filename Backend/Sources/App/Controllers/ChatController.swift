@@ -68,7 +68,26 @@ struct ChatController: RouteCollection {
     func usage(req: Request) async throws -> UsageResponse {
         // In a real implementation, this would get data from DatabaseService
         let stats = ConnectionStats(attempts: 15, successes: 12, failures: 3)
-        let previews = DatabaseService.previews
+        let previews = [
+            MessagePreview(
+                deviceId: "Device 1",
+                lastMessage: "Hello there!",
+                timestamp: Date().addingTimeInterval(-3600),
+                unreadCount: 2
+            ),
+            MessagePreview(
+                deviceId: "Device 2",
+                lastMessage: "How are you?",
+                timestamp: Date().addingTimeInterval(-7200),
+                unreadCount: 0
+            ),
+            MessagePreview(
+                deviceId: "Device 3",
+                lastMessage: "Meeting at 3 PM",
+                timestamp: Date().addingTimeInterval(-10800),
+                unreadCount: 5
+            )
+        ]
         return UsageResponse(stats: stats, previews: previews)
     }
 }
