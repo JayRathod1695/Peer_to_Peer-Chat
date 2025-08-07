@@ -1,7 +1,7 @@
 import Fluent
 import Vapor
 
-final class Message: Model, Content, @unchecked Sendable {
+final class Message: Model, Content {
     static let schema = "messages"
     
     @ID(key: .id)
@@ -20,7 +20,7 @@ final class Message: Model, Content, @unchecked Sendable {
     var createdAt: Date
     
     @Field(key: "delivery_status")
-    var deliveryStatus: String // Changed from enum to String for simplicity
+    var deliveryStatus: String // Using String instead of enum for simplicity
     
     init() { }
     

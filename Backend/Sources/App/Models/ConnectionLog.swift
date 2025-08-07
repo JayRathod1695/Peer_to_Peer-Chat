@@ -1,7 +1,7 @@
 import Fluent
 import Vapor
 
-final class ConnectionLog: Model, Content, @unchecked Sendable {
+final class ConnectionLog: Model, Content {
     static let schema = "connection_logs"
     
     @ID(key: .id)

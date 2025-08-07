@@ -32,8 +32,8 @@ struct ChatController: RouteCollection {
     
     func scan(req: Request) async throws -> ScanResponse {
         // In a real implementation, this would use BluetoothManager
-        let devices = ["Device A", "Device B", "Device C"]
-        return ScanResponse(devices: devices)
+        // For now, return an empty list
+        return ScanResponse(devices: [])
     }
     
     func connect(req: Request) async throws -> ConnectResponse {
@@ -42,6 +42,7 @@ struct ChatController: RouteCollection {
         }
         
         // In a real implementation, this would use BluetoothManager
+        // For now, return a success response
         return ConnectResponse(success: true, message: "Connected to \(deviceId)")
     }
     
@@ -57,6 +58,7 @@ struct ChatController: RouteCollection {
         let messageRequest = try req.content.decode(MessageRequest.self)
         
         // In a real implementation, this would use BluetoothManager
+        // For now, return a success response
         let messageId = UUID().uuidString
         return SendMessageResponse(
             success: true,
@@ -67,27 +69,9 @@ struct ChatController: RouteCollection {
     
     func usage(req: Request) async throws -> UsageResponse {
         // In a real implementation, this would get data from DatabaseService
-        let stats = ConnectionStats(attempts: 15, successes: 12, failures: 3)
-        let previews = [
-            MessagePreview(
-                deviceId: "Device 1",
-                lastMessage: "Hello there!",
-                timestamp: Date().addingTimeInterval(-3600),
-                unreadCount: 2
-            ),
-            MessagePreview(
-                deviceId: "Device 2",
-                lastMessage: "How are you?",
-                timestamp: Date().addingTimeInterval(-7200),
-                unreadCount: 0
-            ),
-            MessagePreview(
-                deviceId: "Device 3",
-                lastMessage: "Meeting at 3 PM",
-                timestamp: Date().addingTimeInterval(-10800),
-                unreadCount: 5
-            )
-        ]
+        // For now, return default values
+        let stats = ConnectionStats(attempts: 0, successes: 0, failures: 0)
+        let previews: [MessagePreview] = []
         return UsageResponse(stats: stats, previews: previews)
     }
 }

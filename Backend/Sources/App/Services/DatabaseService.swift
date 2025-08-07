@@ -3,11 +3,9 @@ import Vapor
 
 class DatabaseService {
     let db: Database
-    let pythonBridge: PythonBridge
     
     init(db: Database) {
         self.db = db
-        self.pythonBridge = PythonBridge()
     }
     
     // MARK: - User Operations
@@ -37,20 +35,6 @@ class DatabaseService {
             receiverDeviceId: receiverDeviceId
         )
         try await message.save(on: db)
-        
-        // Also save to Supabase via Python
-        do {
-            let _ = try await pythonBridge.saveMessageToSupabase(
-                deviceId: message.senderDeviceId,
-                senderId: message.senderDeviceId,
-                receiverId: message.receiverDeviceId,
-                content: message.content,
-                timestamp: message.createdAt
-            )
-        } catch {
-            print("Failed to save message to Supabase: \(error)")
-        }
-        
         return message
     }
     
@@ -83,30 +67,7 @@ class DatabaseService {
     }
     
     func getMessagePreviews(for deviceId: String) async throws -> [MessagePreview] {
-        // Try to get from Supabase first
-        do {
-            let response = try await pythonBridge.getUsageFromSupabase(deviceId: deviceId)
-            if let previews = response["previews"] as? [[String: Any]] {
-                return previews.compactMap { previewDict in
-                    guard let deviceId = previewDict["deviceId"] as? String,
-                          let lastMessage = previewDict["lastMessage"] as? String,
-                          let timestamp = previewDict["timestamp"] as? Date,
-                          let unreadCount = previewDict["unreadCount"] as? Int else {
-                        return nil
-                    }
-                    return MessagePreview(
-                        deviceId: deviceId,
-                        lastMessage: lastMessage,
-                        timestamp: timestamp,
-                        unreadCount: unreadCount
-                    )
-                }
-            }
-        } catch {
-            print("Failed to get previews from Supabase: \(error)")
-        }
-        
-        // Fallback to local database
+        // Get message previews from local database
         let messages = try await Message.query(on: db)
             .group(.or) { group in
                 group.filter(\.$receiverDeviceId == deviceId)
@@ -150,19 +111,6 @@ class DatabaseService {
             status: status
         )
         try await log.save(on: db)
-        
-        // Also save to Supabase via Python
-        do {
-            let _ = try await pythonBridge.saveConnectionLogToSupabase(
-                localDeviceId: log.localDeviceId,
-                remoteDeviceId: log.remoteDeviceId,
-                status: log.status,
-                timestamp: log.createdAt
-            )
-        } catch {
-            print("Failed to save connection log to Supabase: \(error)")
-        }
-        
         return log
     }
     
@@ -175,20 +123,6 @@ class DatabaseService {
     }
     
     func getConnectionStats(for deviceId: String) async throws -> ConnectionStats {
-        // Try to get from Supabase first
-        do {
-            let response = try await pythonBridge.getUsageFromSupabase(deviceId: deviceId)
-            if let stats = response["stats"] as? [String: Any],
-               let attempts = stats["attempts"] as? Int,
-               let successes = stats["successes"] as? Int,
-               let failures = stats["failures"] as? Int {
-                return ConnectionStats(attempts: attempts, successes: successes, failures: failures)
-            }
-        } catch {
-            print("Failed to get stats from Supabase: \(error)")
-        }
-        
-        // Fallback to local database
         let totalAttempts = try await ConnectionLog.query(on: db)
             .filter(\.$localDeviceId == deviceId)
             .count()
@@ -201,37 +135,5 @@ class DatabaseService {
         let failures = totalAttempts - successes
         
         return ConnectionStats(attempts: totalAttempts, successes: successes, failures: failures)
-    }
-    
-    // MARK: - Dummy Data Methods
-    func getDummyDevices() -> [String] {
-        return pythonBridge.getDummyDevicesFromPython()
-    }
-    
-    func getDummyStats() -> ConnectionStats {
-        let stats = pythonBridge.getDummyStatsFromPython()
-        return ConnectionStats(
-            attempts: stats["attempts"] ?? 5,
-            successes: stats["successes"] ?? 3,
-            failures: stats["failures"] ?? 2
-        )
-    }
-    
-    func getDummyMessagePreviews() -> [MessagePreview] {
-        let previews = pythonBridge.getDummyPreviewsFromPython()
-        return previews.compactMap { previewDict in
-            guard let deviceId = previewDict["deviceId"] as? String,
-                  let lastMessage = previewDict["lastMessage"] as? String,
-                  let timestamp = previewDict["timestamp"] as? Date,
-                  let unreadCount = previewDict["unreadCount"] as? Int else {
-                return nil
-            }
-            return MessagePreview(
-                deviceId: deviceId,
-                lastMessage: lastMessage,
-                timestamp: timestamp,
-                unreadCount: unreadCount
-            )
-        }
     }
 }

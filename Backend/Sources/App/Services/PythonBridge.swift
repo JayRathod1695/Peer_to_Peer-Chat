@@ -1,41 +1,44 @@
 import Foundation
 import Vapor
+import AsyncHTTPClient
+import NIOFoundationCompat
 
 class PythonBridge {
-    // In a real implementation, this would interface with Python
-    // For now, we'll provide dummy implementations
+    private let httpClient: HTTPClient
     
+    init(eventLoopGroup: EventLoopGroup) {
+        self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(eventLoopGroup))
+    }
+    
+    deinit {
+        try? httpClient.syncShutdown()
+    }
+    
+    // MARK: - Supabase Integration Methods
     func saveMessageToSupabase(deviceId: String, senderId: String, receiverId: String, content: String, timestamp: Date) async throws -> [String: Any] {
-        // Dummy implementation
-        return ["status": "success"]
+        // In a real implementation, this would make an HTTP request to your Python service
+        // For now, we'll just return a success response
+        return ["status": "success", "message": "Message saved to Supabase"]
     }
     
     func saveConnectionLogToSupabase(localDeviceId: String, remoteDeviceId: String, status: String, timestamp: Date) async throws -> [String: Any] {
-        // Dummy implementation
-        return ["status": "success"]
+        // In a real implementation, this would make an HTTP request to your Python service
+        // For now, we'll just return a success response
+        return ["status": "success", "message": "Connection log saved to Supabase"]
     }
     
     func getUsageFromSupabase(deviceId: String) async throws -> [String: Any] {
-        // Dummy implementation
+        // In a real implementation, this would make an HTTP request to your Python service
+        // For now, we'll just return empty data
         return [
-            "stats": [
-                "attempts": 10,
-                "successes": 8,
-                "failures": 2
-            ],
-            "previews": [
-                [
-                    "deviceId": "Device A",
-                    "lastMessage": "Hello!",
-                    "timestamp": Date(),
-                    "unreadCount": 1
-                ]
-            ]
+            "stats": [:],
+            "previews": []
         ]
     }
     
     func signup(email: String, password: String) async throws -> [String: Any] {
-        // Dummy implementation
+        // In a real implementation, this would make an HTTP request to your Python service
+        // For now, we'll just return a success response
         return [
             "user": [
                 "id": UUID().uuidString,
@@ -49,7 +52,8 @@ class PythonBridge {
     }
     
     func login(email: String, password: String) async throws -> [String: Any] {
-        // Dummy implementation
+        // In a real implementation, this would make an HTTP request to your Python service
+        // For now, we'll just return a success response
         return [
             "user": [
                 "id": UUID().uuidString,
@@ -58,31 +62,6 @@ class PythonBridge {
             "session": [
                 "access_token": "dummy_access_token",
                 "refresh_token": "dummy_refresh_token"
-            ]
-        ]
-    }
-    
-    func getDummyDevicesFromPython() -> [String] {
-        return ["Device A", "Device B", "Device C"]
-    }
-    
-    func getDummyStatsFromPython() -> [String: Int] {
-        return ["attempts": 15, "successes": 12, "failures": 3]
-    }
-    
-    func getDummyPreviewsFromPython() -> [[String: Any]] {
-        return [
-            [
-                "deviceId": "Device 1",
-                "lastMessage": "Hello there!",
-                "timestamp": Date().addingTimeInterval(-3600),
-                "unreadCount": 2
-            ],
-            [
-                "deviceId": "Device 2",
-                "lastMessage": "How are you?",
-                "timestamp": Date().addingTimeInterval(-7200),
-                "unreadCount": 0
             ]
         ]
     }
